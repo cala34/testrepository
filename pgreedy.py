@@ -2,20 +2,23 @@ import numpy as np
 import random
 import math
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
 
 
 def pgreedy(discrete_omega, kernel, f, maxIter):
 	""" For a surrogate model sf for model f: Omega \subset R^d -> R^q,
 		the coefficients of the expansion wrt a kernel basis is computed.
 		Assuming:
-			- discrete_omega is an np.array of numbers in Omega (R^d), here d = 1
+			- discrete_omega is an 2d-np.array of numbers in Omega (R^d) of shape (length, d)
 			- kernel is a function from Omega x Omega to real numbers
 			- f is an np.array of shape (len(discrete_omega), q),
 				where q is the output dimension, containing the function
 				evaluations of discrete_omega
 	"""
 
-	domega_size = len(discrete_omega)
+	domega_length = discrete_omega.shape[0]
 	q = f.shape[1]
 
 	def A(i, j):
@@ -40,15 +43,15 @@ def pgreedy(discrete_omega, kernel, f, maxIter):
 	# selected indices
 	selected = []
 	# not selected indices
-	notselected = range(0, domega_size)
+	notselected = range(0, domega_length)
 	# a 2-d array of the Newton basis evaluated on discrete_omega
-	basis_eval = np.zeros((domega_size, maxIter))
+	basis_eval = np.zeros((domega_length, maxIter))
 	# an array of the coefficients wrt the Newton basis
 	coeff = np.zeros((maxIter, q))
 	# the residual evaluated on discrete_omega at each iteration
 	residual_eval = np.copy(f)
 	# the power function evaluated on discrete_omega at each iteration
-	power_eval = A(0,0) * np.ones(domega_size)
+	power_eval = A(0,0) * np.ones(domega_length)
 	# the basis transition matrix
 	change_of_basis = np.zeros((maxIter, maxIter))
 	# an array storing the maximum power function at each iteration
@@ -93,42 +96,65 @@ def pgreedy(discrete_omega, kernel, f, maxIter):
 
 		del notselected[i]
 
-	print "indices of selection: "
-	print selected
+	# print "indices of selection: "
+	# print selected
 
 	# resulting approximation of discrete_omega
 	sf = np.dot(coeff.reshape(1, maxIter), np.transpose(basis_eval[:, :])).reshape(-1)
 	# computing the coefficients wrt the kernel basis
 	a = np.dot(change_of_basis, coeff)
-	sfa = np.dot(A(range(0, domega_size), selected), a).reshape(-1)
+	sfa = np.dot(A(range(0, domega_length), selected), a).reshape(-1)
 
 	# plotting the training
 	plt.figure(1)
-	plt.title("model: blue line, surrogate: green dots (not selected), red dots (selected)")
-	plt.plot(discrete_omega, f, discrete_omega, sf, 'g^', discrete_omega[selected], sf[selected], 'r^')
-	plt.figure(2)
 	plt.title("residuals")
 	plt.plot(discrete_omega, residual_eval, 'bo', discrete_omega[selected], residual_eval[selected], 'ro')
-	plt.figure(3)
-	plt.title("maximum of the evaluated power function at each iteration on discrete_omega")
+	plt.figure(2)
+	plt.title("maximum of the power function evaluated on discrete_omega at each iteration")
 	plt.plot(range(0,maxIter), pmax, 'r^')
-	plt.show()
 
-	return [a, discrete_omega[selected]]
+	return [a, sf, discrete_omega[selected]]
 
 # Test
 if __name__ == "__main__":
-	discrete_omega = np.linspace(-3.0, 3.0,50)
-	# = np.array([])
-	# for i in range(0, 10):
-		# discrete_omega = np.append(discrete_omega, random.random())
-	print "discrete_omega: "
-	print discrete_omega
+	# discrete_omega = np.random.rand(20, 2)
+	X = np.arange(-5, 5, 0.25)
+	Y = np.arange(-5, 5, 0.25)
+
+	# discrete_omega is of shape (len(X)**2, 2)
+	discrete_omega = np.zeros((len(X)**2, 2))
+	for i in range(len(X)):
+		for j in range(len(Y)):
+			discrete_omega[i*len(Y)+j, 0] = X[i]
+			discrete_omega[i*len(Y)+j, 1] = Y[j]
+
+	# X, Y in meshgrid form, ie X, Y of shape (len(X), len(X))
+	X, Y = np.meshgrid(X, Y)
+
 	def kernel(x,y):
-		return math.exp(-math.pow(x-y, 2))
-	# some test function
-	sin_vector = np.vectorize(math.sin)
-	f = sin_vector(discrete_omega).reshape((-1, 1))
+		return math.exp(-np.linalg.norm(x-y)**2)
+
+	# test function from R^2 to R: sin(2norm(x,y))
+	R = np.sqrt(X**2 + Y**2)
+	# in mesh grid form
+	Z = np.sin(R)
+
+	# in shape (len(X)**2, 1)
+	f = np.array([])
+	for i in range(len(X)):
+		for j in range(len(X)):
+			f = np.append(f, Z[i,j])
+	f = f.reshape((-1,1))
 
 	# computing the basis
-	[a, selection] = pgreedy(discrete_omega, kernel, f, 20)
+	[a, sf, selection] = pgreedy(discrete_omega, kernel, f, 400)
+
+	fig = plt.figure()
+	ax = fig.add_subplot(111, projection='3d')
+	surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm)
+	ax.set_zlim(-1.01, 1.01)
+	ax.zaxis.set_major_locator(LinearLocator(10))
+	ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+	fig.colorbar(surf, shrink=0.5, aspect=5)
+	ax.scatter(X, Y, sf)
+	plt.show()
