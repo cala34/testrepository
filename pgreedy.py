@@ -7,7 +7,7 @@ from matplotlib import cm
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 
 
-def pgreedy(discrete_omega, kernel, f, maxIter):
+def pgreedy(discrete_omega, kernel, f, max_iterations, p_tolerance):
 	""" For a surrogate model sf for model f: Omega \subset R^d -> R^q,
 		the coefficients of the expansion wrt a kernel basis is computed.
 		Assuming:
@@ -43,22 +43,23 @@ def pgreedy(discrete_omega, kernel, f, maxIter):
 	# selected indices
 	selected = []
 	# not selected indices
-	notselected = range(0, domega_length)
+	notselected = range(domega_length)
 	# a 2-d array of the Newton basis evaluated on discrete_omega
-	basis_eval = np.zeros((domega_length, maxIter))
+	basis_eval = np.zeros((domega_length, max_iterations))
 	# an array of the coefficients wrt the Newton basis
-	coeff = np.zeros((maxIter, q))
+	coeff = np.zeros((max_iterations, q))
 	# the residual evaluated on discrete_omega at each iteration
 	residual_eval = np.copy(f)
 	# the power function evaluated on discrete_omega at each iteration
 	power_eval = A(0,0) * np.ones(domega_length)
 	# the basis transition matrix
-	change_of_basis = np.zeros((maxIter, maxIter))
+	change_of_basis = np.zeros((max_iterations, max_iterations))
 	# an array storing the maximum power function at each iteration
-	pmax = np.zeros(maxIter)
+	pmax = np.zeros(max_iterations)
+	num_iterations = max_iterations
 
 
-	for k in range(0, maxIter):
+	for k in range(0, max_iterations):
 		# point selection of this iteration
 		i = np.argmax(power_eval[notselected])
 		selected.append(notselected[i])
@@ -96,14 +97,26 @@ def pgreedy(discrete_omega, kernel, f, maxIter):
 
 		del notselected[i]
 
-	# print "indices of selection: "
-	# print selected
+		# break if tolerance is met
+		if pmax[k] < p_tolerance:
+			num_iterations = k+1
+			# cutting of not needed space for more iterations
+			basis_eval = basis_eval[:, 0:num_iterations]
+			coeff = coeff[0:num_iterations, :]
+			change_of_basis = change_of_basis[0:num_iterations, 0:num_iterations]
+			break
 
 	# resulting approximation of discrete_omega
-	sf = np.dot(coeff.reshape(1, maxIter), np.transpose(basis_eval[:, :])).reshape(-1)
+	sf = np.dot(coeff.reshape(1, num_iterations), np.transpose(basis_eval[:, :])).reshape(-1)
 	# computing the coefficients wrt the kernel basis
 	a = np.dot(change_of_basis, coeff)
-	sfa = np.dot(A(range(0, domega_length), selected), a).reshape(-1)
+	# sfa = np.dot(A(range(0, domega_length), selected), a).reshape(-1)
+
+	# print training results
+	print "Training Results:"
+	print "number of iterations: ", num_iterations
+	print "maximum of power function on discrete_omega: ", pmax[num_iterations-1]
+	print "maximum residual: ", max(residual_eval)
 
 	# plotting the training
 	plt.figure(1)
@@ -111,9 +124,9 @@ def pgreedy(discrete_omega, kernel, f, maxIter):
 	plt.plot(discrete_omega, residual_eval, 'bo', discrete_omega[selected], residual_eval[selected], 'ro')
 	plt.figure(2)
 	plt.title("maximum of the power function evaluated on discrete_omega at each iteration")
-	plt.plot(range(0,maxIter), pmax, 'r^')
+	plt.plot(range(0,max_iterations), pmax, 'r^')
 
-	return [a, sf, discrete_omega[selected]]
+	return [a, sf, discrete_omega[selected], num_iterations]
 
 # Test
 if __name__ == "__main__":
@@ -147,7 +160,7 @@ if __name__ == "__main__":
 	f = f.reshape((-1,1))
 
 	# computing the basis
-	[a, sf, selection] = pgreedy(discrete_omega, kernel, f, 400)
+	[a, sf, selection, num_iterations] = pgreedy(discrete_omega, kernel, f, 600, math.pow(10, -2))
 
 	fig = plt.figure()
 	ax = fig.add_subplot(111, projection='3d')
