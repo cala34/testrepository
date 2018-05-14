@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import math
+from numbers import Number
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
@@ -22,6 +23,13 @@ def pgreedy(discrete_omega, kernel, f, max_iterations, p_tolerance):
 	q = f.shape[1]
 
 	def A(i, j):
+		# X, Y = np.meshgrid(discrete_omega[i, :], discrete_omega[j, :], indexing='ij')
+		# result = kernel(X, Y)
+		# if isinstance(i, Number):
+		# 	result = result[0, :]
+		# if isinstance(j, Number):
+		# 	result = result[..., 0]
+		# return result
 		if type(i) is list or type(i) is np.ndarray:
 			rows = np.array([])
 			for row_index in i:
@@ -43,7 +51,7 @@ def pgreedy(discrete_omega, kernel, f, max_iterations, p_tolerance):
 	# selected indices
 	selected = []
 	# not selected indices
-	notselected = range(domega_length)
+	notselected = list(range(domega_length))
 	# a 2-d array of the Newton basis evaluated on discrete_omega
 	basis_eval = np.zeros((domega_length, max_iterations))
 	# an array of the coefficients wrt the Newton basis
@@ -67,33 +75,32 @@ def pgreedy(discrete_omega, kernel, f, max_iterations, p_tolerance):
 
 		# computing the kth basis function
 		if k > 0:
-			a = np.transpose(basis_eval[notselected, 0:k]).reshape((k, len(notselected)))
+			a = basis_eval[notselected, 0:k].T
 			b = basis_eval[selected[k], 0:k]
-			basis_eval[notselected, k] = A(notselected, selected[k]).reshape(len(notselected)) - np.dot(b, a)
+			basis_eval[notselected, k] = A(notselected, selected[k]).ravel() - b @ a
 			# Problem: 2-d arrays mit shape( _ , 1) werden automatisch als Zeilenvektor gespeichert
 		else:
-			basis_eval[notselected, k] = A(notselected, selected[k]).reshape(len(notselected))
+			basis_eval[notselected, k] = A(notselected, selected[k]).ravel()
 		basis_eval[notselected, k] /= power_eval[selected[k]]
 
 		# computing the kth coefficient wrt the Newton basis
 		coeff[k, :] = residual_eval[selected[k], :] / power_eval[selected[k]]
 
 		# updating the residuals
-		x = residual_eval[notselected, :].reshape(len(notselected), q)
-		y = basis_eval[notselected, k].reshape(len(notselected), 1)
-		z = coeff[k, :].reshape(1,q)
-		residual_eval[notselected, :] = np.subtract(x, np.matmul(y, z))
+		x = residual_eval[notselected, :]
+		y = basis_eval[notselected, k]
+		z = coeff[k, :]
+		residual_eval[notselected, :] = x - np.outer(y, z)
 
 		# updating the basis transition matrix
-		change_of_basis[0:k, k] = - np.dot(np.copy(change_of_basis[0:k, 0:k]), np.copy(np.transpose(basis_eval[selected[k], 0:k])))
+		change_of_basis[0:k, k] = - change_of_basis[0:k, 0:k] @ basis_eval[selected[k], 0:k].T
 		change_of_basis[k, k] = 1
 		change_of_basis[:, k] /= np.copy(power_eval[selected[k]])
 
 		#updating the power function
-		abs_vector = np.vectorize(math.fabs)
-		power_squared = np.square(power_eval[notselected])
-		basis_squared = np.square(basis_eval[notselected, k])
-		power_eval[notselected] = np.sqrt(abs_vector(power_squared - basis_squared))
+		power_squared = power_eval[notselected]**2
+		basis_squared = basis_eval[notselected, k]**2
+		power_eval[notselected] = np.sqrt(np.abs(power_squared - basis_squared))
 
 		del notselected[i]
 
@@ -107,16 +114,16 @@ def pgreedy(discrete_omega, kernel, f, max_iterations, p_tolerance):
 			break
 
 	# resulting approximation of discrete_omega
-	sf = np.dot(coeff.reshape(1, num_iterations), np.transpose(basis_eval[:, :])).reshape(-1)
+	sf = basis_eval @ coeff
 	# computing the coefficients wrt the kernel basis
-	a = np.dot(change_of_basis, coeff)
+	a = change_of_basis @ coeff
 	# sfa = np.dot(A(range(0, domega_length), selected), a).reshape(-1)
 
 	# print training results
-	print "Training Results:"
-	print "number of iterations: ", num_iterations
-	print "maximum of power function on discrete_omega: ", pmax[num_iterations-1]
-	print "maximum residual: ", max(residual_eval)
+	print("Training Results:")
+	print("number of iterations: ", num_iterations)
+	print("maximum of power function on discrete_omega: ", pmax[num_iterations-1])
+	print("maximum residual: ", max(residual_eval))
 
 	# plotting the training
 	plt.figure(1)
@@ -145,7 +152,7 @@ if __name__ == "__main__":
 	X, Y = np.meshgrid(X, Y)
 
 	def kernel(x,y):
-		return math.exp(-np.linalg.norm(x-y)**2)
+		return np.exp(-np.linalg.norm(x-y)**2)
 
 	# test function from R^2 to R: sin(2norm(x,y))
 	R = np.sqrt(X**2 + Y**2)
