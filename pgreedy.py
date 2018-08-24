@@ -1,52 +1,51 @@
 import numpy as np
-import random
 import math
 from numbers import Number
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
-from matplotlib.ticker import LinearLocator, FormatStrFormatter
-import examples
 
+"""
+To interpolate a given model f: Omega -> R^output_dim with the use of a kernel
+basis, the p-greedy algorithm chooses kernel translates iteratively and computes
+the interpolant in each iteration. Once a tolerance is met or the max number of
+iterations is reached, the interpolant is found and the algorithm stops.
 
-def train(discrete_omega, kernel, f, max_iterations, p_tolerance, norm_squarred=None):
-	""" For a surrogate model sf for model f: Omega \subset R^d -> R^q,
-		the coefficients of the expansion wrt a kernel basis is computed.
-		Assuming:
-			- discrete_omega is an 2d-np.array of numbers in Omega (R^d) of shape (length, d)
-			- kernel is a function from Omega x Omega to real numbers
-			- f is an np.array of shape (len(discrete_omega), q),
-				where q is the output dimension, containing the function
-				evaluations of discrete_omega
-	"""
+We are assuming:
+	- data is an 2d-np.array of shape (num_data_sites, d) containing all
+		available data sites in Omega \subset R^d
+	- kernel is a strictly positive definite kernel from Omega x Omega to R
+	- f is an 2d-np.array of shape (len(data), output_dim) containing the values
+		of f evaluated on data
+"""
 
+def train(data, kernel, f, max_iterations, p_tolerance, norm_squarred=None):
+
+	# indicates whether f is element of the kernel's underlying RKHS
 	f_is_rkhs = norm_squarred is not None
 
-	domega_length = discrete_omega.shape[0]
-	q = f.shape[1]
+	num_data_sites = data.shape[0]
+	output_dim = f.shape[1]
 
 	# kernel matrix A
-	A = np.zeros((domega_length, domega_length))
-	for k in range(domega_length):
-		A[:, k] = kernel(discrete_omega, discrete_omega[k, :])
+	A = np.zeros((num_data_sites, num_data_sites))
+	for k in range(num_data_sites):
+		A[:, k] = kernel(data, data[k, :])
 
 	# initializing needed variables
 
 	# selected indices
 	selected = []
 	# not selected indices
-	notselected = list(range(domega_length))
-	# a 2-d array of the Newton basis evaluated on discrete_omega
-	basis_eval = np.zeros((domega_length, max_iterations))
-	# an array of the coefficients wrt the Newton basis
-	coeff = np.zeros((max_iterations, q))
-	# the residual evaluated on discrete_omega at each iteration
-	# shape (max_iterations, domega_length, q)
-	# axis 0 = iteration, axis 1 = data value, axis 2 = component
-	residual_eval = np.zeros((max_iterations, domega_length, q))
-	# the power function evaluated on discrete_omega at each iteration
+	notselected = list(range(num_data_sites))
+	# a 2-d array of the Newton basis evaluated on data
 	# axis 0 = data value, axis 1 = iteration
-	power_eval = np.empty((domega_length, max_iterations))
+	basis_eval = np.zeros((num_data_sites, max_iterations))
+	# an array of the coefficients wrt the Newton basis
+	coeff = np.zeros((max_iterations, output_dim))
+	# the residual evaluated on data at each iteration
+	# axis 0 = iteration, axis 1 = data value, axis 2 = component
+	residual_eval = np.zeros((max_iterations, num_data_sites, output_dim))
+	# the power function evaluated on data at each iteration
+	# axis 0 = data value, axis 1 = iteration
+	power_eval = np.empty((num_data_sites, max_iterations))
 	power_eval.fill(np.nan)
 	# the basis transition matrix
 	change_of_basis = np.zeros((max_iterations, max_iterations))
@@ -55,7 +54,8 @@ def train(discrete_omega, kernel, f, max_iterations, p_tolerance, norm_squarred=
 	# an array containing the quadrature of f-surrogate at each iteration
 	residual_quad = np.array([])
 	# an array storing the interpolation error in rkhs norm at each iteration
-	rkhs_error = np.zeros(max_iterations)
+	if f_is_rkhs:
+		rkhs_error = np.zeros(max_iterations)
 
 	for k in range(0, max_iterations):
 		# point selection for this iteration
@@ -97,18 +97,17 @@ def train(discrete_omega, kernel, f, max_iterations, p_tolerance, norm_squarred=
 
 		#updating the power function
 		if k > 0:
-			power_squared = power_eval[notselected, k-1]**2
+			power_squared = power_eval[:, k-1]**2
 		else:
 			power_squared = A.diagonal()
-		basis_squared = basis_eval[notselected, k]**2
-		power_eval[notselected, k] = np.sqrt(np.abs(power_squared - basis_squared))
-		if k > 0:
-			power_eval[selected[0:k], k] = power_eval[selected[0:k], k-1]
+		basis_squared = basis_eval[:, k]**2
+		power_eval[:, k] = np.sqrt(np.abs(power_squared - basis_squared))
 
+		# computing norm(f-f_k)
 		if f_is_rkhs:
-			kernel_coeff = (change_of_basis[0:k+1, 0:k+1] @ coeff[0:k+1, :]).reshape((-1, q))
+			kernel_coeff = (change_of_basis[0:k+1, 0:k+1] @ coeff[0:k+1, :]).reshape((-1, output_dim))
 			sum = 0
-			for i in range(q):
+			for i in range(output_dim):
 				sum += np.inner(kernel_coeff[:, i], f[selected, i] - residual_eval[k, selected, i])
 			rkhs_error[k] = np.sqrt(np.absolute(norm_squarred - sum))
 
@@ -127,7 +126,7 @@ def train(discrete_omega, kernel, f, max_iterations, p_tolerance, norm_squarred=
 				rkhs_error = rkhs_error[0:num_iterations]
 			break
 
-	# resulting approximation of discrete_omega
+	# resulting approximation of data
 	surrogate = basis_eval @ coeff
 	# computing the coefficients wrt the kernel basis
 	kernel_coeff = change_of_basis @ coeff
