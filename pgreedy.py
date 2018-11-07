@@ -1,6 +1,7 @@
 import numpy as np
 import math
 from numbers import Number
+import pdb
 
 """
 To interpolate a given model f: Omega -> R^output_dim with the use of a kernel
@@ -17,15 +18,22 @@ We are assuming:
 """
 
 def train(data, kernel, max_iterations, p_tolerance, f=None, norm_squarred=None):
-
+	print("Started training...")
 	data_dependent = f is not None
-
 	num_data_sites = data.shape[0]
 
 	# kernel matrix A
+	# kernelvector = np.vectorize(kernel, signature = '(n),(n)->()')
+	# A = kernelvector(data, data)
+	# A = np.zeros((num_data_sites, num_data_sites))
+	# for k in range(num_data_sites):
+	# 	for l in range(num_data_sites):
+	# 		A[k, l] = kernel(data[k,:], data[l, :])
+	print(data.shape)
 	A = np.zeros((num_data_sites, num_data_sites))
 	for k in range(num_data_sites):
 		A[:, k] = kernel(data, data[k, :])
+	pdb.set_trace()
 
 	# initializing needed variables
 
@@ -42,7 +50,7 @@ def train(data, kernel, max_iterations, p_tolerance, f=None, norm_squarred=None)
 	power_eval.fill(np.nan)
 	# number of iterations
 	num_iterations = max_iterations
-	
+
 	output_dim = None
 	f_is_rkhs = None
 	change_of_basis = None
@@ -70,7 +78,14 @@ def train(data, kernel, max_iterations, p_tolerance, f=None, norm_squarred=None)
 		if f_is_rkhs:
 			rkhs_error = np.zeros(max_iterations)
 
+		fifty_iterations = 1
+
 	for k in range(0, max_iterations):
+		# print training status
+		if k > 50 * fifty_iterations:
+			print("Selected more than", 50*fifty_iterations, "points...")
+			fifty_iterations += 1
+
 		# point selection for this iteration
 		if k > 0:
 			selection_index = np.argmax(power_eval[notselected,k-1])
@@ -86,7 +101,7 @@ def train(data, kernel, max_iterations, p_tolerance, f=None, norm_squarred=None)
 			basis_eval[notselected, k] /= power_eval[selected[k], k-1]
 		else:
 			basis_eval[notselected, k] = A[notselected, selected[k]].ravel()
-			basis_eval[notselected, k] /= A[selected[k],selected[k]]
+			basis_eval[notselected, k] /= np.sqrt(A[selected[k],selected[k]])
 
 		#updating the power function
 		if k > 0:
@@ -146,5 +161,15 @@ def train(data, kernel, max_iterations, p_tolerance, f=None, norm_squarred=None)
 		surrogate = basis_eval @ newton_coeff
 		# computing the coefficients wrt the kernel basis
 		kernel_coeff = change_of_basis @ newton_coeff
+
+	print("Completed Training.\n")
+	print("Training results:\n")
+	print("number of data sites:", num_data_sites)
+	print("number of selected data sites/number of iterations:", num_iterations)
+	print("max of power function on training data:", np.max(power_eval[:,num_iterations-1]))
+	if data_dependent:
+		print("max residual on training data:", np.sum(residual_eval[num_iterations-1,:]))
+	if f_is_rkhs:
+		print("max RKHS error on training data:", rkhs_error[num_iterations-1])
 
 	return selected, surrogate, kernel_coeff, residual_eval, power_eval, rkhs_error
