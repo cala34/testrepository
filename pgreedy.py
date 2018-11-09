@@ -10,166 +10,213 @@ the interpolant in each iteration. Once a tolerance is met or the max number of
 iterations is reached, the interpolant is found and the algorithm stops.
 
 We are assuming:
-	- data is an 2d-np.array of shape (num_data_sites, d) containing all
+	- data is an 2d-np.array of shape (num_data, d) containing all
 		available data sites in Omega \subset R^d
 	- kernel is a strictly positive definite kernel from Omega x Omega to R
 	- f is an 2d-np.array of shape (len(data), output_dim) containing the values
 		of f evaluated on data
 """
 
-def train(data, kernel, max_iterations, p_tolerance, f=None, norm_squarred=None):
-	print("Started training...")
-	data_dependent = f is not None
-	num_data_sites = data.shape[0]
+def train(interpolation_data, train_param):
 
-	# kernel matrix A
-	# kernelvector = np.vectorize(kernel, signature = '(n),(n)->()')
-	# A = kernelvector(data, data)
-	# A = np.zeros((num_data_sites, num_data_sites))
-	# for k in range(num_data_sites):
-	# 	for l in range(num_data_sites):
-	# 		A[k, l] = kernel(data[k,:], data[l, :])
-	print(data.shape)
-	A = np.zeros((num_data_sites, num_data_sites))
-	for k in range(num_data_sites):
-		A[:, k] = kernel(data, data[k, :])
-	pdb.set_trace()
+	# load interpolation data
+	data = interpolation_data['data']
+	num_data = data.shape[0]
+	data_dependent = 'f' in interpolation_data
+	f_is_rkhs = 'rkhs_norm_f_2' in interpolation_data
+	if data_dependent:
+		f = interpolation_data['f']
+	if f_is_rkhs:
+		norm_squarred = interpolation_data['rkhs_norm_f_2']
+
+	# load training parameters
+	kernel = train_param['kernel']
+	max_iterations = train_param['max_iterations']
+	if 'p_tolerance' in train_param:
+		p_tol = train_param['p_tolerance']
+	else:
+		p_tol = 0
+	if 'r_tolerance' in train_param:
+		r_tol = train_param['r_tolerance']
+	else:
+		r_tol = 0
+
+
+	def kernel_matrix(k,l):
+		if data.ndim > 1:
+			return kernel(data[k,:], data[l,:])
+		else:
+			return kernel(data[k], data[l])
+	kernel_matrix_vectorized = np.vectorize(kernel_matrix)
+	kernel_matrix_diagonal = [kernel_matrix(i,i) for i in range(num_data)]
+
 
 	# initializing needed variables
-
 	# selected indices
 	selected = []
 	# not selected indices
-	notselected = list(range(num_data_sites))
-	# a 2-d array of the Newton basis evaluated on data
+	notselected = list(range(num_data))
+	# a 2d array of the Newton basis evaluated on data
 	# axis 0 = data value, axis 1 = iteration
-	basis_eval = np.zeros((num_data_sites, max_iterations))
+	newton_basis = np.zeros((num_data, max_iterations))
 	# the power function evaluated on data at each iteration
 	# axis 0 = data value, axis 1 = iteration
-	power_eval = np.empty((num_data_sites, max_iterations))
-	power_eval.fill(np.nan)
+	power_fct = np.zeros((num_data, max_iterations))
+	# max power function in each iteration
+	max_power_fct = np.zeros(max_iterations)
 	# number of iterations
 	num_iterations = max_iterations
+	# variable to print training status
+	fifty_iterations = 1
 
 	output_dim = None
-	f_is_rkhs = None
-	change_of_basis = None
+	transition_matrix = None
 	newton_coeff = None
-	residual_eval = None
-	residual_quad = None
+	residual = None
+	max_residual = None
 	rkhs_error = None
 	surrogate = None
 	kernel_coeff = None
 
 	if data_dependent:
+		# dimension of output space of f
 		output_dim = f.shape[1]
-		# indicates whether f is element of the kernel's underlying RKHS
-		f_is_rkhs = norm_squarred is not None
-		# the basis transition matrix
-		change_of_basis = np.zeros((max_iterations, max_iterations))
-		# an array of the coefficients wrt the Newton basis
+		# basis transition matrix
+		transition_matrix = np.zeros((max_iterations, max_iterations))
+		# coefficients wrt the Newton basis
+		# axis 0 = iteration, axis 1 = component
 		newton_coeff = np.zeros((max_iterations, output_dim))
-		# the residual evaluated on data at each iteration
+		# residual evaluated on data at each iteration
 		# axis 0 = iteration, axis 1 = data value, axis 2 = component
-		residual_eval = np.zeros((max_iterations, num_data_sites, output_dim))
-		# an array containing the quadrature of f-surrogate at each iteration
-		residual_quad = np.array([])
-		# an array storing the interpolation error in rkhs norm at each iteration
+		residual = np.zeros((max_iterations, num_data, output_dim))
+		# 2-norm of the max residual in each iteration
+		max_residual = np.zeros(max_iterations)
 		if f_is_rkhs:
+			# interpolation error in rkhs norm at each iteration
 			rkhs_error = np.zeros(max_iterations)
 
-		fifty_iterations = 1
+	# preparing output
+	results = {}
 
+	# Training
+	print("Started training...")
 	for k in range(0, max_iterations):
 		# print training status
 		if k > 50 * fifty_iterations:
 			print("Selected more than", 50*fifty_iterations, "points...")
 			fifty_iterations += 1
 
-		# point selection for this iteration
+		# point selection in this iteration
 		if k > 0:
-			selection_index = np.argmax(power_eval[notselected,k-1])
+			selection_index = np.argmax(power_fct[notselected,k-1])
 		else:
-			selection_index = np.argmax(A.diagonal())
+			selection_index = np.argmax(kernel_matrix_diagonal)
 		selected.append(notselected[selection_index])
 
 		# computing the kth basis function
 		if k > 0:
-			a = basis_eval[notselected, 0:k].T
-			b = basis_eval[selected[k], 0:k]
-			basis_eval[notselected, k] = A[notselected, selected[k]].ravel() - b @ a
-			basis_eval[notselected, k] /= power_eval[selected[k], k-1]
+			a = newton_basis[notselected, 0:k].T
+			b = newton_basis[selected[k], 0:k]
+			kernel_values = kernel_matrix_vectorized(notselected, selected[k]).ravel()
+			newton_basis[notselected, k] =  kernel_values - b @ a
+			newton_basis[notselected, k] /= power_fct[selected[k], k-1]
 		else:
-			basis_eval[notselected, k] = A[notselected, selected[k]].ravel()
-			basis_eval[notselected, k] /= np.sqrt(A[selected[k],selected[k]])
+			kernel_values = kernel_matrix_vectorized(notselected, selected[k]).ravel()
+			power = np.sqrt(kernel_matrix(selected[k],selected[k]))
+			newton_basis[notselected, k] = kernel_values / power
 
-		#updating the power function
+		# updating the power function
 		if k > 0:
-			power_squared = power_eval[:, k-1]**2
+			power_squared = power_fct[:, k-1]**2
 		else:
-			power_squared = A.diagonal()
-		basis_squared = basis_eval[:, k]**2
-		power_eval[:, k] = np.sqrt(np.abs(power_squared - basis_squared))
+			power_squared = kernel_matrix_diagonal
+		basis_squared = newton_basis[:, k]**2
+		power_fct[:, k] = np.sqrt(np.abs(power_squared - basis_squared))
+		max_power_fct[k] = np.max(power_fct[:,k])
 
 		if data_dependent:
 			# computing the kth coefficient wrt the Newton basis
 			if k > 0:
-				newton_coeff[k, :] = residual_eval[k-1, selected[k], :] / power_eval[selected[k], k-1]
+				r = residual[k-1, selected[k], :]
+				p = power_fct[selected[k], k-1]
+				newton_coeff[k, :] = r / p
 			else:
-				newton_coeff[k, :] = f[selected[k], :] / A[selected[k],selected[k]]
+				power = np.sqrt(kernel_matrix(selected[k],selected[k]))
+				newton_coeff[k, :] = f[selected[k], :] / power
 
 			# updating the residual
 			if k > 0:
-				residual_eval[k, :, :] = residual_eval[k-1, :, :] - np.outer(basis_eval[:, k], newton_coeff[k, :])
+				r = residual[k-1, :, :]
 			else:
-				residual_eval[k, :, :] = f - np.outer(basis_eval[:, k], newton_coeff[k, :])
+				r = f
+			cv = np.outer(newton_basis[:, k], newton_coeff[k, :])
+			residual[k, :, :] = r - cv
+			max_residual[k] = np.max(np.linalg.norm(residual[k,:,:], axis=1))
 
-			# updating the basis transition matrix
-			change_of_basis[0:k, k] = - change_of_basis[0:k, 0:k] @ basis_eval[selected[k], 0:k].T
-			change_of_basis[k, k] = 1
+			# updating the transition matrix
+			t = transition_matrix[0:k, 0:k]
+			n = newton_basis[selected[k], 0:k].T
+			transition_matrix[0:k, k] = - t @ n
+			transition_matrix[k, k] = 1
 			if k > 0:
-				change_of_basis[:, k] /= np.copy(power_eval[selected[k], k-1]) # no need for copy?
+				transition_matrix[:, k] /= power_fct[selected[k], k-1]
 			else:
-				change_of_basis[:, k] /= A[selected[0], selected[0]]
+				transition_matrix[:, k] /= kernel_matrix(selected[0], selected[0])
 
 			# computing norm(f-f_k)
 			if f_is_rkhs:
-				kernel_coeff = (change_of_basis[0:k+1, 0:k+1] @ newton_coeff[0:k+1, :]).reshape((-1, output_dim))
-				sum = 0
-				for i in range(output_dim):
-					sum += np.inner(kernel_coeff[:, i], f[selected, i] - residual_eval[k, selected, i])
+				t = transition_matrix[0:k+1, 0:k+1]
+				n = newton_coeff[0:k+1, :]
+				kernel_coeff = (t @ n).reshape((-1, output_dim))
+				x = f[selected,:] + residual[k,selected,:]
+				sum = np.sum((kernel_coeff @ x.T).diagonal())
 				rkhs_error[k] = np.sqrt(np.absolute(norm_squarred - sum))
 
 		notselected.pop(selection_index)
 
 		# break if tolerance is met
-		if np.max(power_eval[:,k]) <= p_tolerance:
+		if max_power_fct[k] <= p_tol or max_residual[k] <= r_tol:
+			# save expansion size
 			num_iterations = k+1
 			# cutting of not needed space for more iterations
-			basis_eval = basis_eval[:, 0:num_iterations]
-			power_eval = power_eval[:, 0:num_iterations]
+			newton_basis = newton_basis[:, 0:num_iterations]
+			power_fct = power_fct[:, 0:num_iterations]
+			max_power_fct = max_power_fct[0:num_iterations]
 			if data_dependent:
 				newton_coeff = newton_coeff[0:num_iterations, :]
-				residual_eval = residual_eval[0:num_iterations,:,:]
-				change_of_basis = change_of_basis[0:num_iterations, 0:num_iterations]
+				residual = residual[0:num_iterations,:,:]
+				max_residual = max_residual[0:num_iterations]
+				transition_matrix = transition_matrix[0:num_iterations, 0:num_iterations]
 				if f_is_rkhs:
 					rkhs_error = rkhs_error[0:num_iterations]
 			break
 
+	# saving training Results
+	results['selected'] = selected
+	results['num_iterations'] = num_iterations
+	results['max_power_fct'] = max_power_fct
 	if data_dependent:
 		# resulting approximation of data
-		surrogate = basis_eval @ newton_coeff
+		surrogate = newton_basis @ newton_coeff
+		results['surrogate'] = surrogate
 		# computing the coefficients wrt the kernel basis
-		kernel_coeff = change_of_basis @ newton_coeff
+		kernel_coeff = transition_matrix @ newton_coeff
+		results['kernel_coeff'] = kernel_coeff
+		results['max_residual'] = max_residual
+		if f_is_rkhs:
+			results['rkhs_error'] = rkhs_error
 
+    # print training results
 	print("Completed Training.\n")
 	print("Training results:\n")
-	print("number of data sites:", num_data_sites)
-	print("number of selected data sites/number of iterations:", num_iterations)
-	print("max of power function on training data:", np.max(power_eval[:,num_iterations-1]))
+	print("number of data sites:", num_data)
+	print("number of selected data sites/expansion size:", num_iterations)
+	if f_is_rkhs:
+		print("norm of target function:", np.sqrt(norm_squarred))
+	print("max of power function on training data:", max_power_fct[num_iterations-1])
 	if data_dependent:
-		print("max residual on training data:", np.sum(residual_eval[num_iterations-1,:]))
+		print("max residual on training data:", max_residual[num_iterations-1])
 	if f_is_rkhs:
 		print("max RKHS error on training data:", rkhs_error[num_iterations-1])
 
-	return selected, surrogate, kernel_coeff, residual_eval, power_eval, rkhs_error
+	return results

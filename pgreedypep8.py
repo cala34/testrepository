@@ -17,13 +17,13 @@ We are assuming:
 """
 
 
-def train(data,
-          kernel,
-          max_iterations,
-          p_tolerance,
-          f=None,
-          norm_squarred=None):
-
+def train(
+        data,
+        kernel,
+        max_iterations,
+        p_tolerance,
+        f=None,
+        norm_squarred=None):
     print("Started training...")
     data_dependent = f is not None
     num_data_sites = data.shape[0]
@@ -77,7 +77,7 @@ def train(data,
         if f_is_rkhs:
             rkhs_error = np.zeros(max_iterations)
 
-    fifty_iterations = 1
+        fifty_iterations = 1
 
     for k in range(0, max_iterations):
         # print training status

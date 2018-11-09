@@ -7,76 +7,73 @@ from matplotlib.ticker import LinearLocator, FormatStrFormatter
 import pgreedy
 import kernels
 
-def grid():
-    # discrete_omega = np.random.rand(20, 2)
-    X = np.arange(-5, 5, 0.25)
-    Y = np.arange(-5, 5, 0.25)
-    # discrete_omega is of shape (len(X)**2, 2)
-    print("number of data sites: ", len(X)**2)
-    discrete_omega = np.zeros((len(X)**2, 2))
-    for i in range(len(X)):
-    	for j in range(len(Y)):
-            discrete_omega[i*len(Y)+j, 0] = X[i]
-            discrete_omega[i*len(Y)+j, 1] = Y[j]
+def grid(num_data):
+    interpolation_data = {}
+    np.random.seed()
+    data = 10 * np.random.rand(num_data, 2) - 5
+    f = np.sin(np.linalg.norm(data, axis=1))
+    interpolation_data['data'] = data
+    interpolation_data['f'] = f.reshape((-1,1))
+
+    X = np.arange(-5, 5, 0.5)
+    Y = np.arange(-5, 5, 0.5)
     X, Y = np.meshgrid(X, Y)
-    # test function from R^2 to R: sin(2norm(x,y))
-    R = np.sqrt(X**2 + Y**2)
-    # in mesh grid form
-    Z = np.sin(R)
+    Z = np.sin(np.sqrt(X**2 + Y**2))
+    plot_f = {}
+    plot_f['X'] = X
+    plot_f['Y'] = Y
+    plot_f['Z'] = Z
 
-    # in shape (len(X)**2, 1)
-    f = np.array([])
-    for i in range(len(X)):
-    	for j in range(len(X)):
-    		f = np.append(f, Z[i,j])
-    f = f.reshape((-1,1))
-
-    return discrete_omega, f, X, Y, Z
-
-# Test
-if __name__ == "__main__":
-    # training parameter
-    kernel = kernels.gausskernel()
-    discrete_omega, f, X, Y, Z = grid()
-    max_iterations = len(discrete_omega)
-    p_tolerance = math.pow(10, -7)
-
-    data_dependent = f is not None
-
-    # computing the basis
-    # todo: training dict
-    selected, surrogate, kernel_coeff, residual_eval, power_eval, rkhs_error = pgreedy.train(discrete_omega, kernel, max_iterations, p_tolerance, f)
+    return interpolation_data, plot_f
 
 
-    num_iterations = len(selected)
-    pmax = np.max(power_eval, axis=0)
-    if data_dependent:
-         rmax = np.max(np.sum(residual_eval, axis=2), axis=1)
+def plot_results(interpolation_data, results, plot_f):
+    # load variables
+    data = interpolation_data['data']
+    num_iterations = results['num_iterations']
+    selected = results['selected']
+    surrogate = results['surrogate']
+    pmax = results['max_power_fct']
+    rmax = results['max_residual']
 
-    # print training results
-    print("Training Results:")
-    print("number of iterations: ", num_iterations)
+    fig = plt.figure()
+    plt.title("max power function (-), \n max residual on data (-.)")
+    plt.semilogy(range(0, num_iterations), pmax, '-', range(0, num_iterations), rmax, '-.')
 
-    if data_dependent:
-        fig = plt.figure()
-        plt.title("max power function (-), \n max residual on omega (-.)")
-        plt.semilogy(range(0, num_iterations), pmax, '-', range(0, num_iterations), rmax, '-.')
-        fig = plt.figure()
-        fig.suptitle("surrogate model and selected values (blue)")
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(discrete_omega[:,0], discrete_omega[:,1], surrogate.ravel(), c='g', marker='o')
-        ax.scatter(discrete_omega[selected,0], discrete_omega[selected,1], surrogate[selected, :].ravel(), c='b', marker='o')
-        fig = plt.figure()
-        fig.suptitle("original model")
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot_wireframe(X, Y, Z)
+    fig = plt.figure()
+    fig.suptitle("surrogate model and selected values (blue)")
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(data[:,0], data[:,1], surrogate.ravel(), c='g', marker='o')
+    ax.scatter(data[selected,0], data[selected,1], surrogate[selected, :].ravel(), c='b', marker='o')
+
+    fig = plt.figure()
+    fig.suptitle("target function")
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_wireframe(plot_f['X'], plot_f['Y'], plot_f['Z'])
 
     fig = plt.figure()
     plt.title("sample points (selected red)")
-    plt.plot(discrete_omega[:,0], discrete_omega[:,1], 'b.', discrete_omega[selected,0], discrete_omega[selected,1], 'r.')
-    fig = plt.figure()
-    plt.title("max power function (-)")
-    plt.semilogy(range(0, num_iterations), pmax, '-')
-
+    plt.plot(data[:,0], data[:,1], 'b.', data[selected,0], data[selected,1], 'r.')
 
     plt.show()
+
+
+# Test
+if __name__ == "__main__":
+    # training parameters
+    kernel = kernels.gausskernel(1/2)
+    num_data = 2000
+    train_param = {}
+    train_param['kernel'] = kernel
+    train_param['max_iterations'] = num_data
+    train_param['p_tolerance'] = math.pow(10, -7)
+    train_param['r_tolerance'] = math.pow(10, -7)
+
+    # load data
+    interpolation_data, plot_f = grid(num_data)
+
+    # training
+    results = pgreedy.train(interpolation_data, train_param)
+
+    # plot training results
+    plot_results(interpolation_data, results, plot_f)
