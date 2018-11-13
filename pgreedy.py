@@ -1,7 +1,4 @@
 import numpy as np
-import math
-from numbers import Number
-import pdb
 
 """
 To interpolate a given model f: Omega -> R^output_dim with the use of a kernel
@@ -18,20 +15,22 @@ We are assuming:
 """
 
 def train(interpolation_data, train_param):
-
 	# load interpolation data
 	data = interpolation_data['data']
 	num_data = data.shape[0]
 	data_dependent = 'f' in interpolation_data
-	f_is_rkhs = 'rkhs_norm_f_2' in interpolation_data
+	f_is_rkhs = 'rkhs_norm_2' in interpolation_data
 	if data_dependent:
 		f = interpolation_data['f']
 	if f_is_rkhs:
-		norm_squarred = interpolation_data['rkhs_norm_f_2']
+		norm_squarred = interpolation_data['rkhs_norm_2']
 
 	# load training parameters
 	kernel = train_param['kernel']
-	max_iterations = train_param['max_iterations']
+	if 'max_iterations' in train_param:
+		max_iterations = train_param['max_iterations']
+	else:
+		max_iterations = num_data
 	if 'p_tolerance' in train_param:
 		p_tol = train_param['p_tolerance']
 	else:
@@ -41,15 +40,16 @@ def train(interpolation_data, train_param):
 	else:
 		r_tol = 0
 
-
+	# function returning kernel values of data for given indices
 	def kernel_matrix(k,l):
 		if data.ndim > 1:
 			return kernel(data[k,:], data[l,:])
 		else:
 			return kernel(data[k], data[l])
+	# function returning a submatrix of the kernel matrix on data
 	kernel_matrix_vectorized = np.vectorize(kernel_matrix)
-	kernel_matrix_diagonal = [kernel_matrix(i,i) for i in range(num_data)]
-
+	# diagonal of kernel matrix
+	kernel_matrix_diagonal = np.array([kernel_matrix(i,i) for i in range(num_data)])
 
 	# initializing needed variables
 	# selected indices
@@ -122,16 +122,16 @@ def train(interpolation_data, train_param):
 			newton_basis[notselected, k] /= power_fct[selected[k], k-1]
 		else:
 			kernel_values = kernel_matrix_vectorized(notselected, selected[k]).ravel()
-			power = np.sqrt(kernel_matrix(selected[k],selected[k]))
+			power = np.sqrt(kernel_matrix_diagonal[k])
 			newton_basis[notselected, k] = kernel_values / power
 
 		# updating the power function
 		if k > 0:
-			power_squared = power_fct[:, k-1]**2
+			power_squared = power_fct[notselected, k-1]**2
 		else:
-			power_squared = kernel_matrix_diagonal
-		basis_squared = newton_basis[:, k]**2
-		power_fct[:, k] = np.sqrt(np.abs(power_squared - basis_squared))
+			power_squared = kernel_matrix_diagonal[notselected]
+		basis_squared = newton_basis[notselected, k]**2
+		power_fct[notselected, k] = np.sqrt(np.abs(power_squared - basis_squared))
 		max_power_fct[k] = np.max(power_fct[:,k])
 
 		if data_dependent:
@@ -163,14 +163,14 @@ def train(interpolation_data, train_param):
 			else:
 				transition_matrix[:, k] /= kernel_matrix(selected[0], selected[0])
 
-			# computing norm(f-f_k)
 			if f_is_rkhs:
+				# computing norm(f-f_k)
 				t = transition_matrix[0:k+1, 0:k+1]
 				n = newton_coeff[0:k+1, :]
 				kernel_coeff = (t @ n).reshape((-1, output_dim))
 				x = f[selected,:] + residual[k,selected,:]
 				sum = np.sum((kernel_coeff @ x.T).diagonal())
-				rkhs_error[k] = np.sqrt(np.absolute(norm_squarred - sum))
+				rkhs_error[k] = np.sqrt(np.abs(norm_squarred - sum))
 
 		notselected.pop(selection_index)
 

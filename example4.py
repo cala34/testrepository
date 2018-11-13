@@ -14,7 +14,7 @@ def print_accuracy(data_train, data_test, labels_train, labels_test, results):
         kernelvector = np.vectorize(lambda i: kernel(x, data_train[i, :]))
         return kernelvector(selected) @ kernel_coeff
 
-    test = np.zeros((len(data_test), 10))
+    test = np.zeros((len(data_test),10))
     for i in range(len(data_test)):
         test[i,:] = eval(data_test[i,:])
 
@@ -42,7 +42,7 @@ def plot_results(interpolation_data, results):
 
     return
 
-# Test
+
 if __name__ == "__main__":
 
     kernel = kernels.gausskernel(1/100)
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     # training parameters
     train_param = {}
     train_param['kernel'] = kernel
-    train_param['max_iterations'] = 500
+    train_param['max_iterations'] = 200
     train_param['p_tolerance'] = math.pow(10, -2)
     train_param['r_tolerance'] = math.pow(10, -2)
 

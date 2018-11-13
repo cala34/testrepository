@@ -36,7 +36,7 @@ def grid(num_translates, kernel):
     rkhs_norm = alpha @ T @ alpha
 
     # save interpolation data
-    interpolation_data = {'data': data, 'f': f.reshape((-1,1)), 'rkhs_norm_f_2': rkhs_norm}
+    interpolation_data = {'data': data, 'f': f.reshape((-1,1)), 'rkhs_norm_2': rkhs_norm}
 
     # mesh grid for plotting the target function
     X = np.arange(-1,1,.1)
@@ -54,7 +54,7 @@ def plot_results(interpolation_data, results, plot_f):
     # load variables
     data = interpolation_data['data']
     num_data = len(data)
-    rkhs_norm = interpolation_data['rkhs_norm_f_2']
+    rkhs_norm = interpolation_data['rkhs_norm_2']
 
     num_iterations = results['num_iterations']
     selected = results['selected']
@@ -105,12 +105,13 @@ def plot_results(interpolation_data, results, plot_f):
 if __name__ == "__main__":
     # training parameters
     kernel = kernels.gausskernel(1/2)
-    num_translates = 100 # number of kernel translates for target function
+    # kernel = kernels.wendlandkernel(2,2)
+    num_translates = 10 # number of kernel translates for target function
     train_param = {}
     train_param['kernel'] = kernel
-    train_param['max_iterations'] = 170
-    train_param['p_tolerance'] = math.pow(10, -7)
-    train_param['r_tolerance'] = math.pow(10, -7)
+    train_param['max_iterations'] = 100
+    train_param['p_tolerance'] = math.pow(10, -20)
+    train_param['r_tolerance'] = math.pow(10, -10)
 
     # load data
     interpolation_data, plot_f = grid(num_translates, kernel)

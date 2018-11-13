@@ -38,10 +38,11 @@ def mnist_features(num_data_sites_train = None, num_data_sites_test = None):
     labels_test = labels_test[:num_data_sites_test]
 
     model = Sequential()
-    conv1 = Conv2D(6, kernel_size=(5, 5),
-                     activation='relu',
-                     padding = 'same',
-                     input_shape=input_shape)
+    conv1 = Conv2D(6,
+                   kernel_size=(5, 5),
+                   activation='relu',
+                   padding = 'same',
+                   input_shape=input_shape)
     model.add(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))
     model.add(pool1)
