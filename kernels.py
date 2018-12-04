@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
+from scipy.special import factorial
 
 def gausskernel(shape = 1):
     # return lambda x,y : np.exp(-shape**2 * np.linalg.norm(x-y, axis = 1)**2)

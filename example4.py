@@ -33,11 +33,12 @@ def plot_results(interpolation_data, results):
 
     num_iterations = results['num_iterations']
     pmax = results['max_power_fct']
+    rmean = results['mean_residual']
     rmax = results['max_residual']
 
     fig = plt.figure()
-    plt.title("max power function (-), \n max residual on omega (-.)")
-    plt.semilogy(range(num_iterations), pmax, '-', range(num_iterations), rmax, '-.')
+    plt.title("max power function (-), \n max residual (:) \n mean residual (-.)")
+    plt.semilogy(range(num_iterations), pmax, '-', range(num_iterations), rmean, '-.', range(num_iterations), rmax, ':')
     plt.show()
 
     return
@@ -46,15 +47,15 @@ def plot_results(interpolation_data, results):
 if __name__ == "__main__":
 
     kernel = kernels.gausskernel(1/100)
-    num_data_train = 10000
-    num_data_test = 1000
+    num_data_train = 2000
+    num_data_test = 100
 
     # training parameters
     train_param = {}
     train_param['kernel'] = kernel
-    train_param['max_iterations'] = 200
-    train_param['p_tolerance'] = math.pow(10, -2)
-    train_param['r_tolerance'] = math.pow(10, -2)
+    train_param['max_iterations'] = 1000
+    train_param['p_tolerance'] = math.pow(10, -7)
+    train_param['r_tolerance'] = math.pow(10, -7)
 
     # load data
     output = np.load("output.npy")
@@ -65,13 +66,6 @@ if __name__ == "__main__":
     labels_train = output[4][:num_data_train]
     labels_test = output[5][:num_data_test]
 
-    # similarity = np.zeros((num_data_train,num_data_train))
-    # for i in range(num_data_train):
-    #     x = np.vectorize(lambda j: np.linalg.norm(data_train[i,:] - data_train[j,:]))
-    #     similarity[i,:] = x(range(num_data_train))
-    # print(similarity)
-    # print(similarity.shape)
-
     # interpolation data
     interpolation_data = {}
     interpolation_data['data'] = data_train
@@ -79,6 +73,13 @@ if __name__ == "__main__":
 
     # training
     results = pgreedy.train(interpolation_data, train_param)
+
+    k = results['num_iterations'] - 1
+    residual = results['residual']
+    surrogate = results['surrogate']
+    f = interpolation_data['f']
+
+    print("Ziffern mit Fehler > .8:", np.sum(f[np.linalg.norm(residual[k,:,:],axis=1) > .8], axis=0))
 
     print_accuracy(data_train, data_test, labels_train, labels_test, results)
 

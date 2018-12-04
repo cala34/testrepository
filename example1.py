@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.axes as axes
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
@@ -14,11 +15,11 @@ def grid(num_translates, kernel):
     num_data = 2000
     # initialize the random number generator with the current system time
     np.random.seed()
-    # generate data to interpolate on
+    # generate data from [0,1]^2 to interpolate on
     data = 2 * np.random.rand(num_data, 2) - 1
     # generate coefficients and centers for target function
-    alpha = 30 * np.random.rand(num_translates) - 15
     centers = 2 * np.random.rand(num_translates, 2) - 1
+    alpha = 10 * np.random.rand(num_translates) - 5 # coefficients in [-5,5]
 
     # compute values of target function
     def model(x):
@@ -39,8 +40,8 @@ def grid(num_translates, kernel):
     interpolation_data = {'data': data, 'f': f.reshape((-1,1)), 'rkhs_norm_2': rkhs_norm}
 
     # mesh grid for plotting the target function
-    X = np.arange(-1,1,.1)
-    Y = np.arange(-1,1,.1)
+    X = np.arange(-1.5,1.5,.1)
+    Y = np.arange(-1.5,1.5,.1)
     Z = np.zeros((len(X),len(X)))
     for i in range(len(X)):
         for j in range(len(X)):
@@ -50,15 +51,18 @@ def grid(num_translates, kernel):
 
     return interpolation_data, plot_f
 
-def plot_results(interpolation_data, results, plot_f):
+def plot_results(interpolation_data, results, plot_f, train_param):
     # load variables
     data = interpolation_data['data']
     num_data = len(data)
     rkhs_norm = interpolation_data['rkhs_norm_2']
 
+    kernel = train_param['kernel']
+
     num_iterations = results['num_iterations']
     selected = results['selected']
     surrogate = results['surrogate']
+    kernel_coeff = results['kernel_coeff']
     pmax = results['max_power_fct']
     rmax = results['max_residual']
     rkhs_error = results['rkhs_error']
@@ -67,57 +71,77 @@ def plot_results(interpolation_data, results, plot_f):
     Y = plot_f['Y']
     Z = plot_f['Z']
 
-    # plot max power function of each iteration
-    fig = plt.figure()
-    plt.title("sample points (selected red)")
-    plt.plot(data[:,0], data[:,1], 'b.', data[selected,0], data[selected,1], 'r.')
-    fig = plt.figure()
-    plt.title("max power function (-)")
-    plt.semilogy(range(0, num_iterations), pmax, '-',)
+
+    fig, ax = plt.subplots()
+    ax.plot(data[:,0], data[:,1], 'b.', label = 'training data')
+    ax.plot(data[selected,0], data[selected,1], 'r.', label = 'selection')
+    legend = ax.legend(loc='upper right')
+    for label in legend.get_lines():
+        label.set_linewidth(1.5)
 
     # plot max residual on data and its upper bound
-    fig = plt.figure()
-    plt.title("norm(f) * max power function (-) (upper bound), \n max residual on training data (-.)")
-    plt.semilogy(range(0, num_iterations), pmax*np.sqrt(rkhs_norm), '-', range(0, num_iterations), rmax, '-.')
+    fig, ax = plt.subplots()
+    plt.xlabel('iteration')
+    ax.semilogy(range(num_iterations), pmax*np.sqrt(rkhs_norm), '-', label = 'upper bound')
+    ax.semilogy(range(num_iterations), rmax, '-.', label = 'max residual')
+    legend = ax.legend(loc='upper right')
+    for label in legend.get_lines():
+        label.set_linewidth(1.5)
 
-    # plot rkhs error at each iteration
-    fig = plt.figure()
-    plt.title("rkhs error on omega at each iteration ")
-    plt.semilogy(range(0, num_iterations), rkhs_error, '--')
+    fig, ax = plt.subplots()
+    plt.xlabel('iteration')
+    ax.semilogy(range(num_iterations), rkhs_error, '--', label = 'rkhs error')
+    legend = ax.legend(loc='upper right')
+    for label in legend.get_lines():
+        label.set_linewidth(1.5)
 
-    # plot surrogate values
-    fig = plt.figure()
-    fig.suptitle("surrogate model and selected values (blue)")
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(data[:,0], data[:,1], surrogate.ravel(), c='g', marker='o')
-    ax.scatter(data[selected,0], data[selected,1], surrogate[selected, :].ravel(), c='b', marker='o')
+    # # plot surrogate values
+    # def surrogatefunction(x):
+    #     selection = data[selected,:]
+    #     kernelvector = np.vectorize(lambda i: kernel(x, selection[i,:]))
+    #     K = kernelvector(range(len(selected)))
+    #     return np.inner(kernel_coeff.ravel(), K)
+    # X1 = np.arange(-1.5,1.5,.1)
+    # Y1 = np.arange(-1.5,1.5,.1)
+    # Z1 = np.zeros((len(X1),len(X1)))
+    # for i in range(len(X1)):
+    #     for j in range(len(X1)):
+    #         Z1[i,j] = surrogatefunction(np.array([X1[i], Y1[j]]))
+    # X1, Y1 = np.meshgrid(X1, Y1)
+    # fig = plt.figure()
+    # # fig.suptitle("surrogate model")
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.plot_surface(X1, Y1, Z1.T)
+    # ax.scatter(data[selected,0], data[selected,1], surrogate[selected, :].ravel(), c='b', marker='o')
 
     # plot target function
     fig = plt.figure()
-    fig.suptitle("target function")
+    # fig.suptitle("target function")
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot_wireframe(X, Y, Z)
-
-    plt.show()
+    ax.plot_surface(X, Y, Z, color='#052b68')
 
 
 # Test
 if __name__ == "__main__":
+    # expansion size of target function
+    num_translates = 100
+
+    # load data
+    interpolation_data, plot_f = grid(num_translates, kernels.gausskernel())
+
     # training parameters
-    kernel = kernels.gausskernel(1/2)
-    # kernel = kernels.wendlandkernel(2,2)
-    num_translates = 10 # number of kernel translates for target function
+    # kernel = kernels.gausskernel()
+    kernel = kernels.wendlandkernel(2,2)
     train_param = {}
     train_param['kernel'] = kernel
     train_param['max_iterations'] = 100
-    train_param['p_tolerance'] = math.pow(10, -20)
-    train_param['r_tolerance'] = math.pow(10, -10)
-
-    # load data
-    interpolation_data, plot_f = grid(num_translates, kernel)
+    train_param['p_tolerance'] = math.pow(10, -13)
+    train_param['r_tolerance'] = math.pow(10, -13)
 
     # training
     results = pgreedy.train(interpolation_data, train_param)
 
     # plot training results
-    plot_results(interpolation_data, results, plot_f)
+    plot_results(interpolation_data, results, plot_f, train_param)
+
+    plt.show()

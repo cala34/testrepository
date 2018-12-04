@@ -91,6 +91,5 @@ def mnist_features(num_data_sites_train = None, num_data_sites_test = None):
     return output
 
 if __name__ == "__main__":
-    # mnist_features(10000, 250)
     print("Saving output to output.npy...")
     np.save("output", mnist_features())
