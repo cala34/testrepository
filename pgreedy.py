@@ -4,7 +4,7 @@ import numpy as np
 To interpolate a given model f: Omega -> R^output_dim with the use of a kernel
 basis, the p-greedy algorithm chooses kernel translates iteratively and computes
 the interpolant in each iteration. Once a tolerance is met or the max number of
-iterations is reached, the interpolant is found and the algorithm stops.
+iterations is reached, the interpolant is computed and the algorithm stops.
 
 We are assuming:
     - data is an 2d-np.array of shape (num_data, d) containing all
@@ -23,7 +23,7 @@ def train(interpolation_data, train_param):
     if data_dependent:
         f = interpolation_data['f']
     if f_is_rkhs:
-        norm_squarred = interpolation_data['rkhs_norm_2'] # vector of rkhs norms^2 of each component
+        norm_squarred = interpolation_data['rkhs_norm_2']
 
     # load training parameters
     kernel = train_param['kernel']
@@ -94,13 +94,12 @@ def train(interpolation_data, train_param):
         # 2-norm of the mean residual in each iteration
         mean_residual = np.zeros(max_iterations)
         if f_is_rkhs:
-            # interpolation error in rkhs norm at each iteration
-            rkhs_norm_surrogate = np.zeros((max_iterations, output_dim))
+            # interpolation error in rkhs norm ^2 at each iteration
+            rkhs_norm_surrogate = np.zeros(max_iterations)
 
     # preparing output
     results = {}
 
-    import pdb; pdb.set_trace()
     # Training
     print("Started training...")
     for k in range(0, max_iterations):
@@ -167,8 +166,9 @@ def train(interpolation_data, train_param):
             else:
                 transition_matrix[:, k] /= kernel_matrix(selected[0], selected[0])
 
+            # compute rkhs norm^2 of surrogate
             if f_is_rkhs:
-                rkhs_norm_surrogate[k, :] = np.sum(newton_coeff[0:k+1, :]**2, axis = 0)
+                rkhs_norm_surrogate[k] = np.sum(newton_coeff[0:k+1, :]**2)
 
         notselected.pop(selection_index)
 
@@ -187,7 +187,7 @@ def train(interpolation_data, train_param):
                 max_residual = max_residual[0:num_iterations]
                 transition_matrix = transition_matrix[0:num_iterations, 0:num_iterations]
                 if f_is_rkhs:
-                    rkhs_norm_surrogate = rkhs_norm_surrogate[0:num_iterations, :]
+                    rkhs_norm_surrogate = rkhs_norm_surrogate[0:num_iterations]
             break
 
     # saving training Results
@@ -205,7 +205,7 @@ def train(interpolation_data, train_param):
         results['mean_residual'] = mean_residual
         results['max_residual'] = max_residual
         if f_is_rkhs:
-            rkhs_error = np.sum(np.abs(np.tile(norm_squarred, (num_iterations, 1)) - rkhs_norm_surrogate), axis = 1) # squarred error
+            rkhs_error = norm_squarred - rkhs_norm_surrogate # squarred error
             results['rkhs_error'] = rkhs_error
 
     # print training results
@@ -218,6 +218,6 @@ def train(interpolation_data, train_param):
         print("mean residual on training data:", mean_residual[num_iterations-1])
         print("max residual on training data:", max_residual[num_iterations-1])
     if f_is_rkhs:
-        print("max RKHS error on training data:", rkhs_error[num_iterations-1])
+        print("RKHS error:", rkhs_error[num_iterations-1])
 
     return results

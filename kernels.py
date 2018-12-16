@@ -1,15 +1,18 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
-from matplotlib.ticker import LinearLocator, FormatStrFormatter
-from scipy.special import factorial
+import math
+
+'''
+Implementation of Gaussian and Wendland Kernels
+
+If this script is exectued, it produces example plots of kernels.
+'''
 
 def gausskernel(shape = 1):
-    # return lambda x,y : np.exp(-shape**2 * np.linalg.norm(x-y, axis = 1)**2)
-    return lambda x,y : np.exp(-shape**2 * np.linalg.norm(x-y)**2)
+    return lambda x,y : np.exp(-shape * np.linalg.norm(x-y)**2)
 
-def wendlandkernel(d,k):
+def wendlandkernel(d,k, shape = 1):
     if d == 1:
         if k == 0:
             p = lambda r: np.maximum(1-r,0)
@@ -34,11 +37,10 @@ def wendlandkernel(d,k):
         elif k == 2:
             p = lambda r: np.maximum((1-r), 0)**7 * (16*r**2 + 7*r + 1)
 
-    return lambda x,y: p(np.linalg.norm(x-y))
+    return lambda x,y: p(shape * np.linalg.norm(x-y))
 
 
 if __name__ == "__main__":
-    # import pdb; pdb.set_trace()
     x = 1
     X = np.linspace(-2,4,100)
     kernelvectorize1 = np.vectorize(lambda y: gausskernel()(x,y))
@@ -48,11 +50,16 @@ if __name__ == "__main__":
     Y2 = kernelvectorize2(X)
     Y3 = kernelvectorize3(X)
 
-    plt.figure()
-    plt.plot(X, Y1, X, Y2, X, Y3)
+    fig, ax = plt.subplots()
+    ax.plot(X, Y2, label = 'a = 0.5')
+    ax.plot(X, Y1, label = 'a = 1')
+    ax.plot(X, Y3, label = 'a = 2')
+    legend = ax.legend(loc='upper right')
+    for label in legend.get_lines():
+        label.set_linewidth(1.5)
+    plt.title("Gaussian Kernels at x = 1")
     plt.show()
-    #
-    # import pdb; pdb.set_trace()
+
     n = 50
     x = np.array([1,1])
     X1 = X = np.linspace(-1.5,3.5,n)
@@ -65,6 +72,7 @@ if __name__ == "__main__":
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.plot_surface(X1, X2, Z)
+    plt.title("Gaussian Kernel at x = (1,1)")
     plt.show()
 
     x = 1
@@ -76,11 +84,16 @@ if __name__ == "__main__":
     kernelvectorize = np.vectorize(lambda y: wendlandkernel(1,2)(x,y))
     Y3 = kernelvectorize(X)
 
-    plt.figure()
-    plt.plot(X, Y1, X, Y2, X, Y3)
+    fig, ax = plt.subplots()
+    ax.plot(X, Y1, label = 'k = 0')
+    ax.plot(X, Y2, label = 'k = 1')
+    ax.plot(X, Y3, label = 'k = 2')
+    legend = ax.legend(loc='upper right')
+    for label in legend.get_lines():
+        label.set_linewidth(1.5)
+    plt.title("Wendland Kernels for d = 1 and k = 0, 1, 2 at x = 1")
     plt.show()
 
-    # import pdb; pdb.set_trace()
     n = 50
     x = np.array([1,1])
     X1 = X = np.linspace(0,2,n)
@@ -91,7 +104,7 @@ if __name__ == "__main__":
     Z = kernelvectorize(range(len(X))).reshape(n,n)
 
     fig = plt.figure()
-    plt.title("kernel translate")
     ax = fig.add_subplot(111, projection='3d')
     ax.plot_surface(X1, X2, Z)
+    plt.title("Wendland Kernel for d = 2 and k = 1 at x = (1,1)")
     plt.show()
